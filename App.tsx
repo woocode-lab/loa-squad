@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import metadata from './metadata.json';
 import { ApiKeyModal } from './components/ApiKeyModal';
 import { fetchSiblings } from './services/lostArkService';
 import { ProcessedCharacter, GroupedMatch, ExcludedCharacter } from './types';
-import { Search, RefreshCw, AlertCircle, Settings, Plus, Trash2, Users, Ban, X, Check, HelpCircle, Info, Edit2, History } from 'lucide-react';
+import { Search, RefreshCw, AlertCircle, Settings, Plus, Trash2, Users, Ban, X, Check, HelpCircle, Info, Edit2, History, Shield, Swords } from 'lucide-react';
 import { getGroupedRaidMatches, getRole, parseLevel, parseCombatPower, formatCombatPower, FLAT_RAID_LIST, MAIN_TAB_RAIDS } from './matchingLogic';
 import { RaidCard } from './components/RaidCard';
 
@@ -89,6 +90,11 @@ function App() {
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  const [selectedLevel, setSelectedLevel] = useState<number | null>(null);
+  const [isStrictFilter, setIsStrictFilter] = useState<boolean>(() => {
+    return localStorage.getItem('lostark_strict_filter') === 'true';
+  });
+
   const [showAllServers, setShowAllServers] = useState<boolean>(() => {
     return localStorage.getItem('lostark_show_all_servers') === 'true';
   });
@@ -136,6 +142,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('lostark_show_all_servers', String(showAllServers));
   }, [showAllServers]);
+
+  useEffect(() => {
+    localStorage.setItem('lostark_strict_filter', String(isStrictFilter));
+  }, [isStrictFilter]);
 
   // Sync current workspace to active preset
   useEffect(() => {
@@ -185,6 +195,7 @@ function App() {
       localStorage.removeItem('lostark_searched_nicknames');
       localStorage.removeItem('lostark_theme');
       localStorage.removeItem('lostark_show_all_servers');
+      localStorage.removeItem('lostark_strict_filter');
       localStorage.removeItem('lostark_visited');
       sessionStorage.setItem('lostark_reset_complete', 'true');
       window.location.reload();
@@ -401,7 +412,11 @@ function App() {
     
     const tabMap: Record<string, GroupedMatch[]> = {};
     
-    matches.forEach(match => {
+    const filteredMatches = selectedLevel 
+      ? matches.filter(m => ((m as any).level || 0) >= selectedLevel)
+      : matches;
+
+    filteredMatches.forEach(match => {
       // 메인 레이드 목록에 포함되어 있는지 확인 (이름 포함 여부로 판단)
       const mainRaidName = mainRaidOrder.find(name => match.raidName.includes(name));
       const tabName = mainRaidName || "그 외 레이드";
@@ -421,7 +436,7 @@ function App() {
     }
 
     return result;
-  }, [matches]);
+  }, [matches, selectedLevel]);
 
   // 검색 결과가 갱신될 때 첫 번째 탭을 활성화
   useEffect(() => {
@@ -656,6 +671,125 @@ function App() {
         )}
 
         <div className="mb-10">
+          {matches.length > 0 && (
+            <div className="flex flex-wrap items-center gap-y-4 gap-x-6 mb-6 px-1">
+              <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+                <span className="text-sm font-bold text-gray-500 dark:text-gray-400 mr-2 flex-shrink-0">레벨 필터:</span>
+                <button
+                  onClick={() => setSelectedLevel(null)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap border ${
+                    selectedLevel === null
+                      ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 border-transparent'
+                      : 'bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500'
+                  }`}
+                >
+                  전체
+                </button>
+                {metadata.raidLevels?.map((level) => (
+                  <button
+                    key={level}
+                    onClick={() => setSelectedLevel(level)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap border ${
+                      selectedLevel === level
+                        ? 'bg-yellow-400 dark:bg-lostark-gold text-gray-900 border-transparent shadow-sm'
+                        : 'bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500'
+                    }`}
+                  >
+                    {level}+
+                  </button>
+                ))}
+              </div>
+
+              {selectedLevel && (
+                <label className="flex items-center gap-2 cursor-pointer group">
+                  <div className="relative flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={isStrictFilter}
+                      onChange={(e) => setIsStrictFilter(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-gray-200 dark:bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-yellow-500"></div>
+                  </div>
+                  <span className="text-xs font-bold text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200 transition-colors">
+                    해당 레벨대만 보기
+                  </span>
+                </label>
+              )}
+            </div>
+          )}
+
+          {/* Eligible Characters Summary for Selected Level */}
+          {selectedLevel && rosters.length > 0 && (
+            <div className="mb-8 p-5 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm animate-in fade-in slide-in-from-top-2 transition-colors duration-300">
+              <div className="flex items-center gap-2 mb-4">
+                <Users className="w-5 h-5 text-yellow-500" />
+                <h3 className="font-bold text-gray-900 dark:text-white">
+                  {selectedLevel}{isStrictFilter ? ' 레벨대' : '+'} 참여 가능 캐릭터 현황
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                {searchedNicknames.map((nick, idx) => {
+                  const eligibleChars = rosters[idx]?.filter(c => {
+                    const lvl = c.parsedItemLevel;
+                    if (lvl < selectedLevel) return false;
+                    if (isStrictFilter) {
+                      const sortedLevels = [...metadata.raidLevels].sort((a, b) => a - b);
+                      const currentIndex = sortedLevels.indexOf(selectedLevel);
+                      const nextLevel = sortedLevels[currentIndex + 1];
+                      if (nextLevel && lvl >= nextLevel) return false;
+                    }
+                    return true;
+                  }) || [];
+                  if (eligibleChars.length === 0) return null;
+                  
+                  return (
+                    <div key={idx} className="flex flex-col gap-2">
+                      <div className="text-xs font-black text-gray-400 dark:text-gray-500 uppercase tracking-wider border-b border-gray-100 dark:border-gray-800 pb-1">
+                        {nick}
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        {eligibleChars.map(char => (
+                          <div key={char.CharacterName} className="flex items-center justify-between group">
+                            {/* 서포터 여부 판별 (role 속성 또는 직업명 직접 체크) */}
+                            {(() => {
+                              const isSupporter = char.role?.toUpperCase() === 'SUPPORTER' || ['바드', '홀리나이트', '도화가'].includes(char.CharacterClassName);
+                              return (
+                            <div className="flex flex-col">
+                              <div className="flex items-center gap-1">
+                                {isSupporter ? (
+                                  <>
+                                    <Shield className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 fill-blue-500/10" title="서포터" />
+                                    <span className="text-sm font-bold text-gray-700 dark:text-gray-200 group-hover:text-yellow-600 dark:group-hover:text-lostark-gold transition-colors">
+                                      {char.CharacterName}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Swords className="w-3.5 h-3.5 text-red-500 dark:text-red-400 fill-red-500/10" title="딜러" />
+                                    <span className="text-sm font-bold text-gray-700 dark:text-gray-200 group-hover:text-yellow-600 dark:group-hover:text-lostark-gold transition-colors">
+                                      {char.CharacterName}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-gray-500">{char.CharacterClassName}</span>
+                            </div>
+                              );
+                            })()}
+                            <span className="text-xs font-mono font-bold text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
+                              {char.ItemMaxLevel}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {groupedTabs.length > 0 ? (
             <>
               {/* Chrome-style Tabs */}
@@ -696,7 +830,29 @@ function App() {
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                       {excluded.map((item, idx) => (
-                        <div key={idx} className="bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-800 p-4 rounded-lg flex flex-col gap-2 opacity-60 hover:opacity-100 transition-opacity"><div className="flex justify-between items-center"><span className="font-medium text-gray-700 dark:text-gray-300">{item.character.CharacterName}</span><span className="text-xs bg-white dark:bg-gray-800 px-2 py-0.5 rounded text-gray-500">{item.character.ItemMaxLevel}</span></div><div className="text-xs text-red-400/80 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {item.reason}</div><div className="text-xs text-gray-600 font-mono">CP: {formatCombatPower(item.power)}</div></div>
+                        <div key={idx} className="bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-800 p-4 rounded-lg flex flex-col gap-2 opacity-60 hover:opacity-100 transition-opacity">
+                          {/* 서포터 여부 판별 */}
+                          {(() => {
+                            const isSupporter = item.character.role?.toUpperCase() === 'SUPPORTER' || ['바드', '홀리나이트', '도화가'].includes(item.character.CharacterClassName);
+                            return (
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-1">
+                              {isSupporter ? (
+                                <Shield className="w-3.5 h-3.5 text-blue-500/70" />
+                              ) : (
+                                <Swords className="w-3.5 h-3.5 text-red-500/70" />
+                              )}
+                              <span className="font-medium text-gray-700 dark:text-gray-300">
+                                {item.character.CharacterName}
+                              </span>
+                            </div>
+                            <span className="text-xs bg-white dark:bg-gray-800 px-2 py-0.5 rounded text-gray-500">{item.character.ItemMaxLevel}</span>
+                          </div>
+                            );
+                          })()}
+                          <div className="text-xs text-red-400/80 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {item.reason}</div>
+                          <div className="text-xs text-gray-600 font-mono">CP: {formatCombatPower(item.power)}</div>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -773,8 +929,17 @@ function App() {
             <div className="p-8 space-y-6 max-h-[60vh] overflow-y-auto scrollbar-hide">
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-yellow-600 dark:text-lostark-gold">v1.1.0</span>
+                  <span className="text-xs text-gray-400">2025.12.31</span>
+                </div>
+                <ul className="text-sm text-gray-600 dark:text-gray-300 list-disc list-inside space-y-2 pl-1 leading-relaxed">
+                  <li>아이템 레벨별 레이드 탭 그룹화 기능 추가</li>
+                </ul>
+              </div>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
                   <span className="text-sm font-bold text-yellow-600 dark:text-lostark-gold">v1.0.0</span>
-                  <span className="text-xs text-gray-400">2024.05.22</span>
+                  <span className="text-xs text-gray-400">2025.12.31</span>
                 </div>
                 <ul className="text-sm text-gray-600 dark:text-gray-300 list-disc list-inside space-y-2 pl-1 leading-relaxed">
                   <li>로아 스쿼드(LOA SQUAD) 출시</li>
